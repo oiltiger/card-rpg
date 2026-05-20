@@ -1,0 +1,258 @@
+# card_engine/doudizhu_rules.gd
+class_name DoudizhuRules
+extends RefCounted
+
+enum HandType {
+	INVALID,
+	SINGLE,
+	PAIR,
+	TRIPLE,
+	TRIPLE_ONE,
+	TRIPLE_PAIR,
+	STRAIGHT,
+	CONSECUTIVE_PAIRS,
+	FOUR_TWO,
+	BOMB,
+	ROYAL_BOMB,
+}
+
+# Identify a hand of cards.
+# Wild cards (jokers or wild-attributed) can substitute for one missing card
+# to complete a recognizable type.
+static func identify_hand(cards: Array[Card]) -> int:
+	if cards.is_empty():
+		return HandType.INVALID
+	var n := cards.size()
+
+	# Royal bomb: exactly small + big joker
+	if n == 2:
+		var has_small := false
+		var has_big := false
+		for c in cards:
+			if c.suit == "joker" and c.number == 16:
+				has_small = true
+			elif c.suit == "joker" and c.number == 17:
+				has_big = true
+		if has_small and has_big:
+			return HandType.ROYAL_BOMB
+
+	var wilds: Array[Card] = []
+	var non_wilds: Array[Card] = []
+	for c in cards:
+		if c.is_wild():
+			wilds.append(c)
+		else:
+			non_wilds.append(c)
+
+	# Direct match without wild substitution first
+	var direct := _identify_without_wild(cards)
+	if direct != HandType.INVALID:
+		return direct
+
+	# Wild substitution: try replacing each wild with every possible value
+	if wilds.size() == 1:
+		for sub_num in range(3, 16):
+			var test_cards := non_wilds.duplicate()
+			test_cards.append(Card.new("spades", sub_num))
+			var r := _identify_without_wild(test_cards)
+			if r != HandType.INVALID:
+				return r
+	# Multiple wilds (rare in current deck)
+	if wilds.size() == 2:
+		for sub1 in range(3, 16):
+			for sub2 in range(3, 16):
+				var test_cards := non_wilds.duplicate()
+				test_cards.append(Card.new("spades", sub1))
+				test_cards.append(Card.new("spades", sub2))
+				var r := _identify_without_wild(test_cards)
+				if r != HandType.INVALID:
+					return r
+
+	return HandType.INVALID
+
+# Pure identification on a card list assumed to contain no wilds.
+static func _identify_without_wild(cards: Array[Card]) -> int:
+	var n := cards.size()
+	if n == 0:
+		return HandType.INVALID
+
+	# Check for jokers — only valid as ROYAL_BOMB, handled separately
+	for c in cards:
+		if c.suit == "joker":
+			if n == 2:
+				var others := cards.filter(func(x: Card) -> bool: return x != c)
+				if others.size() == 1 and others[0].suit == "joker" and others[0].number != c.number:
+					return HandType.ROYAL_BOMB
+			return HandType.INVALID
+
+	var counts := _count_numbers(cards)
+	var numbers := counts.keys()
+	numbers.sort()
+
+	if n == 1:
+		return HandType.SINGLE
+	if n == 2:
+		if numbers.size() == 1:
+			return HandType.PAIR
+		return HandType.INVALID
+	if n == 3:
+		if numbers.size() == 1:
+			return HandType.TRIPLE
+		return HandType.INVALID
+	if n == 4:
+		if numbers.size() == 1:
+			return HandType.BOMB
+		var has_triple := false
+		var has_single := false
+		for num in numbers:
+			if counts[num] == 3:
+				has_triple = true
+			elif counts[num] == 1:
+				has_single = true
+		if has_triple and has_single and numbers.size() == 2:
+			return HandType.TRIPLE_ONE
+		return HandType.INVALID
+	if n == 5:
+		var has_t := false
+		var has_p := false
+		for num in numbers:
+			if counts[num] == 3:
+				has_t = true
+			elif counts[num] == 2:
+				has_p = true
+		if has_t and has_p and numbers.size() == 2:
+			return HandType.TRIPLE_PAIR
+		if _is_straight(cards):
+			return HandType.STRAIGHT
+		return HandType.INVALID
+
+	# n >= 6
+	if n >= 5 and _is_straight(cards):
+		return HandType.STRAIGHT
+	if n >= 6 and n % 2 == 0 and _is_consecutive_pairs(cards):
+		return HandType.CONSECUTIVE_PAIRS
+	if n == 6:
+		var has_four := false
+		for num in numbers:
+			if counts[num] == 4:
+				has_four = true
+		if has_four:
+			return HandType.FOUR_TWO
+
+	return HandType.INVALID
+
+static func _count_numbers(cards: Array[Card]) -> Dictionary:
+	var d := {}
+	for c in cards:
+		d[c.number] = d.get(c.number, 0) + 1
+	return d
+
+static func _is_straight(cards: Array[Card]) -> bool:
+	if cards.size() < 5:
+		return false
+	var nums: Array[int] = []
+	for c in cards:
+		if c.number >= 15:  # no 2s (15) or jokers
+			return false
+		nums.append(c.number)
+	nums.sort()
+	for i in range(1, nums.size()):
+		if nums[i] != nums[i - 1] + 1:
+			return false
+	return true
+
+static func _is_consecutive_pairs(cards: Array[Card]) -> bool:
+	if cards.size() < 6 or cards.size() % 2 != 0:
+		return false
+	var counts := _count_numbers(cards)
+	var nums := counts.keys()
+	nums.sort()
+	for num in nums:
+		if counts[num] != 2:
+			return false
+		if num >= 15:  # no 2s
+			return false
+	for i in range(1, nums.size()):
+		if nums[i] != nums[i - 1] + 1:
+			return false
+	return true
+
+# ---------- Comparison ----------
+
+# Returns true if attacker beats defender. defender is the previous played hand.
+static func can_beat(attacker: Array[Card], defender: Array[Card]) -> bool:
+	var atk_type := identify_hand(attacker)
+	var def_type := identify_hand(defender)
+	if atk_type == HandType.INVALID:
+		return false
+	if def_type == HandType.INVALID:
+		# attacker is opening play — any valid hand "beats" empty
+		return true
+
+	# Royal bomb beats everything
+	if atk_type == HandType.ROYAL_BOMB:
+		return def_type != HandType.ROYAL_BOMB
+	# Bomb beats non-bomb / non-royal
+	if atk_type == HandType.BOMB:
+		if def_type == HandType.ROYAL_BOMB:
+			return false
+		if def_type == HandType.BOMB:
+			return _anchor(attacker, atk_type) > _anchor(defender, def_type)
+		return true
+	# Same type required for normal compare
+	if atk_type != def_type:
+		return false
+	# Same type — for STRAIGHT/CONSECUTIVE_PAIRS, must be same length
+	if atk_type == HandType.STRAIGHT or atk_type == HandType.CONSECUTIVE_PAIRS:
+		if attacker.size() != defender.size():
+			return false
+	return _anchor(attacker, atk_type) > _anchor(defender, def_type)
+
+# Returns the "anchor" number for comparison purposes.
+static func _anchor(cards: Array[Card], type: int) -> int:
+	if type == HandType.ROYAL_BOMB:
+		return 999
+
+	var non_wilds := cards.filter(func(c: Card) -> bool: return not c.is_wild())
+	var counts := _count_numbers(non_wilds)
+
+	match type:
+		HandType.SINGLE:
+			# Joker singles: use actual number (16=小王, 17=大王) so they outrank regular cards
+			if non_wilds.is_empty():
+				var max_num := 0
+				for c in cards:
+					max_num = max(c.number, max_num)
+				return max_num
+			return non_wilds[0].number
+		HandType.PAIR, HandType.TRIPLE:
+			if non_wilds.is_empty():
+				return 0
+			return non_wilds[0].number
+		HandType.TRIPLE_ONE, HandType.TRIPLE_PAIR:
+			for num in counts:
+				if counts[num] >= 3:
+					return num
+			if non_wilds.size() > 0:
+				return non_wilds[0].number
+			return 0
+		HandType.STRAIGHT, HandType.CONSECUTIVE_PAIRS:
+			var nums: Array[int] = []
+			for c in non_wilds:
+				nums.append(c.number)
+			nums.sort()
+			if nums.is_empty():
+				return 0
+			return nums[0]
+		HandType.FOUR_TWO, HandType.BOMB:
+			for num in counts:
+				if counts[num] >= 4:
+					return num
+			var best_num := 0
+			var best_cnt := 0
+			for num in counts:
+				if counts[num] > best_cnt:
+					best_cnt = counts[num]
+					best_num = num
+			return best_num
+	return 0

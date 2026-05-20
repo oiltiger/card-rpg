@@ -1,0 +1,80 @@
+[gd_scene load_steps=2 format=3 uid="uid://b2handarea"]
+
+[ext_resource type="Script" path="res://scenes/hand_area.gd" id="1_ha"]
+
+[node name="HandArea" type="Control"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1_ha")
+
+[node name="PlayZone" type="VBoxContainer" parent="."]
+offset_left = 20.0
+offset_top = 5.0
+offset_right = 1260.0
+offset_bottom = 135.0
+
+[node name="AIRow" type="HBoxContainer" parent="PlayZone"]
+
+[node name="AILabel" type="Label" parent="PlayZone/AIRow"]
+text = "AI出: "
+custom_minimum_size = Vector2(70, 0)
+vertical_alignment = 1
+
+[node name="AICardContainer" type="HBoxContainer" parent="PlayZone/AIRow"]
+size_flags_horizontal = 3
+
+[node name="HSep" type="HSeparator" parent="PlayZone"]
+
+[node name="PlayerRow" type="HBoxContainer" parent="PlayZone"]
+
+[node name="PlayerLabel" type="Label" parent="PlayZone/PlayerRow"]
+text = "我出: "
+custom_minimum_size = Vector2(70, 0)
+vertical_alignment = 1
+
+[node name="PlayerCardContainer" type="HBoxContainer" parent="PlayZone/PlayerRow"]
+size_flags_horizontal = 3
+
+[node name="StatusLabel" type="Label" parent="."]
+offset_left = 40.0
+offset_top = 140.0
+offset_right = 1240.0
+offset_bottom = 165.0
+text = "等待出牌..."
+horizontal_alignment = 1
+
+[node name="CardContainer" type="HBoxContainer" parent="."]
+offset_left = 40.0
+offset_top = 170.0
+offset_right = 1240.0
+offset_bottom = 265.0
+alignment = 1
+
+[node name="RestartButton" type="Button" parent="."]
+offset_left = 490.0
+offset_top = 195.0
+offset_right = 790.0
+offset_bottom = 260.0
+text = "再来一局"
+visible = false
+
+[node name="ButtonRow" type="HBoxContainer" parent="."]
+offset_left = 440.0
+offset_top = 278.0
+offset_right = 840.0
+offset_bottom = 340.0
+alignment = 1
+
+[node name="PlayButton" type="Button" parent="ButtonRow"]
+text = "出牌"
+custom_minimum_size = Vector2(100, 50)
+
+[node name="PassButton" type="Button" parent="ButtonRow"]
+text = "过牌"
+custom_minimum_size = Vector2(100, 50)
+
+[node name="UltimateButton" type="Button" parent="ButtonRow"]
+text = "大招"
+custom_minimum_size = Vector2(100, 50)
+disabled = true

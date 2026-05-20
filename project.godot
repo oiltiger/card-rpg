@@ -1,0 +1,26 @@
+; Godot Engine 4.3 minimal project config
+
+config_version=5
+
+[application]
+
+config/name="Card RPG"
+config/features=PackedStringArray("4.3", "GL Compatibility")
+config/icon="res://icon.svg"
+run/main_scene="res://scenes/BattleScene.tscn"
+
+[autoload]
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/gut/plugin.cfg")
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720

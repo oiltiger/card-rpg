@@ -134,10 +134,13 @@ func _ai_turn() -> void:
 func _on_ultimate_requested() -> void:
 	if battle_state == null or player == null:
 		return
-	var ok := player.use_ultimate()
+	var ok := player.use_ultimate(ai)
 	if ok:
-		fighter_area.show_skill_label("技能释放！")
+		fighter_area.show_skill_label("技能释放！20 伤害")
 		_refresh_ui()
+		if ai.is_dead():
+			battle_state.turn_phase = BattleState.TurnPhase.BATTLE_OVER
+			_show_battle_over()
 
 func _show_battle_over() -> void:
 	var winner := battle_state.get_winner()

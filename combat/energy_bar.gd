@@ -30,8 +30,6 @@ func on_round_win() -> void:
 # Round lost (took damage): clear all, refill real from damage//10.
 func on_round_loss(damage: int) -> void:
 	virtual_points = 0
-	real_points = 0
-	# energy_points are NOT cleared (already-earned ult charges persist)
 	add_real_from_damage(damage)
 
 # Direct real-point gain from taking damage (bypasses virtual).

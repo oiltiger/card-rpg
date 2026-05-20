@@ -54,7 +54,7 @@ func test_ai_vs_ai_energy_accumulates() -> void:
 		+ ai2.energy_bar.real_points + ai2.energy_bar.energy_points)
 	assert_gt(any_energy, 0, "Some energy should be accumulated during a full battle")
 
-func test_combo_state_resets_each_round() -> void:
+func test_empty_hand_settlement_keeps_winner_combo_and_resets_loser() -> void:
 	var ai1 := AICombatant.new()
 	var ai2 := AICombatant.new()
 	var bs := BattleState.new(13)
@@ -62,10 +62,11 @@ func test_combo_state_resets_each_round() -> void:
 
 	var c3 := Card.new("spades", 3)
 	ai1.hand = Hand.new([c3])
-	ai2.hand = Hand.new([Card.new("hearts", 4)])
+	ai2.hand = Hand.new([Card.new("hearts", 4), Card.new("clubs", 5)])
 	bs.current_attacker = ai1
 	bs.last_play = PlayedHand.new()
 	bs.process_play(ai1, [c3])
-	bs.process_pass(ai2)
-	assert_false(ai1.combo_state.active, "Winner combo should reset")
+	assert_true(ai1.combo_state.active, "Winner combo should continue after emptying hand")
+	assert_eq(ai1.energy_bar.virtual_points, 0, "Winner virtual points should convert to real")
+	assert_gt(ai1.energy_bar.real_points + ai1.energy_bar.energy_points, 0)
 	assert_false(ai2.combo_state.active, "Loser combo should reset")

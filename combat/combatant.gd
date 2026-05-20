@@ -25,21 +25,24 @@ func choose_card(_battle_state) -> Dictionary:
 	return {"action": "pass", "cards": []}
 
 # Apply HP delta. Returns true if combatant fainted (hp <= 0).
-func take_damage(amount: int) -> bool:
+func take_damage(amount: int, grant_energy: bool = true) -> bool:
 	hp -= amount
 	if hp < 0:
 		hp = 0
-	energy_bar.add_real_from_damage(amount)
-	energy_points = energy_bar.energy_points
+	if grant_energy:
+		energy_bar.add_real_from_damage(amount)
+		energy_points = energy_bar.energy_points
 	return hp <= 0
 
 func is_dead() -> bool:
 	return hp <= 0
 
 # Spend 1 energy point and return whether the ultimate fires.
-func use_ultimate() -> bool:
+func use_ultimate(target: Combatant = null) -> bool:
 	if energy_points <= 0:
 		return false
 	energy_points -= 1
 	energy_bar.energy_points = energy_points
+	if target != null:
+		target.take_damage(20)
 	return true

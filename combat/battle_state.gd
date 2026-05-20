@@ -16,6 +16,7 @@ var last_play: PlayedHand = null  # last non-pass play (the one to beat)
 var round_number: int = 0
 var turn_phase: int = TurnPhase.WAITING_PLAY
 var rng: RandomNumberGenerator = null
+var discard_pile: Array[Card] = []
 
 func _init(seed_val: int = -1) -> void:
 	rng = RandomNumberGenerator.new()
@@ -43,6 +44,7 @@ func _deal_initial() -> void:
 	var p2_cards := d.deal(17)
 	player.hand = Hand.new(p1_cards)
 	enemy.hand = Hand.new(p2_cards)
+	discard_pile = d.deal(d.size())
 
 func redeal_if_needed() -> bool:
 	if player.hand.is_empty() and enemy.hand.is_empty():
@@ -117,22 +119,23 @@ func process_play(combatant: Combatant, cards: Array[Card]) -> Dictionary:
 		if not other.hand.is_empty():
 			# Opponent still has cards — apply penalty damage
 			var penalty := other.hand.size() * 10
-			other.take_damage(penalty)
+			combatant.energy_bar.convert_virtual_to_real()
+			combatant.energy_points = combatant.energy_bar.energy_points
+			var dead := other.take_damage(penalty, false)
 			result["penalty_damage"] = penalty
 			# Combo: finisher keeps state, opponent resets
 			other.combo_state.reset()
 			other.energy_bar.on_round_loss(penalty)
 			other.energy_points = other.energy_bar.energy_points
-			combatant.energy_points = combatant.energy_bar.energy_points
-			# Redeal both and start fresh round
-			_deal_initial()
-			round_number += 1
-			last_play = PlayedHand.new()
-			current_attacker = combatant
-			turn_phase = TurnPhase.WAITING_PLAY
-			if other.is_dead():
+			if dead:
 				turn_phase = TurnPhase.BATTLE_OVER
 				result["battle_over"] = true
+			else:
+				_deal_initial()
+				round_number += 1
+				last_play = PlayedHand.new()
+				current_attacker = combatant
+				turn_phase = TurnPhase.WAITING_PLAY
 		else:
 			redeal_if_needed()
 	return result
@@ -152,7 +155,7 @@ func process_pass(combatant: Combatant) -> Dictionary:
 
 	var dmg: int = last_play.damage
 	var attacker: Combatant = last_play.combatant_ref
-	var dead := combatant.take_damage(dmg)
+	var dead := combatant.take_damage(dmg, false)
 	result.damage_taken = dmg
 	result.hp_remaining = combatant.hp
 	result.round_ended = true

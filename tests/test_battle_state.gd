@@ -28,7 +28,20 @@ func test_battle_start_deals_17_each() -> void:
 	bs.start_battle(p1, p2)
 	assert_eq(p1.hand.size(), 17)
 	assert_eq(p2.hand.size(), 17)
+	assert_eq(bs.discard_pile.size(), 20)
 	assert_not_null(bs.current_attacker)
+
+func test_battle_start_deals_unique_54_cards() -> void:
+	var p1 := Combatant.new()
+	var p2 := Combatant.new()
+	var bs := BattleState.new(42)
+	bs.start_battle(p1, p2)
+	var seen := {}
+	for c in p1.hand.get_cards() + p2.hand.get_cards() + bs.discard_pile:
+		var key := "%s-%d" % [c.suit, c.number]
+		assert_false(seen.has(key), "Card should be unique: %s" % key)
+		seen[key] = true
+	assert_eq(seen.size(), 54)
 
 func test_invalid_play_returns_not_valid() -> void:
 	var p1 := Combatant.new()
@@ -39,7 +52,7 @@ func test_invalid_play_returns_not_valid() -> void:
 	var result := bs.process_play(p1, [_mk("spades", 3), _mk("hearts", 7)])
 	assert_false(result.valid)
 
-func test_valid_pair_play_removes_cards_and_records_last_play() -> void:
+func test_valid_pair_play_that_empties_hand_redeals_and_penalizes_opponent() -> void:
 	var p1 := Combatant.new()
 	var p2 := Combatant.new()
 	var bs := BattleState.new(42)
@@ -47,10 +60,30 @@ func test_valid_pair_play_removes_cards_and_records_last_play() -> void:
 	var c1 := _mk("spades", 5)
 	var c2 := _mk("hearts", 5)
 	p1.hand = Hand.new([c1, c2])
+	p2.hand = Hand.new([_mk("spades", 3), _mk("hearts", 4), _mk("clubs", 6)])
 	var result := bs.process_play(p1, [c1, c2])
 	assert_true(result.valid)
 	assert_eq(result.damage, 20)
-	assert_eq(p1.hand.size(), 0)
+	assert_eq(result.penalty_damage, 30)
+	assert_eq(p2.hp, 120)
+	assert_eq(p1.hand.size(), 17)
+	assert_eq(p2.hand.size(), 17)
+	assert_eq(bs.discard_pile.size(), 20)
+	assert_true(bs.last_play.is_empty())
+	assert_eq(bs.current_attacker, p1)
+
+func test_valid_pair_play_records_last_play_when_hand_not_empty() -> void:
+	var p1 := Combatant.new()
+	var p2 := Combatant.new()
+	var bs := BattleState.new(42)
+	bs.start_battle(p1, p2)
+	var c1 := _mk("spades", 5)
+	var c2 := _mk("hearts", 5)
+	var spare := _mk("clubs", 9)
+	p1.hand = Hand.new([c1, c2, spare])
+	var result := bs.process_play(p1, [c1, c2])
+	assert_true(result.valid)
+	assert_eq(p1.hand.size(), 1)
 	assert_eq(bs.last_play.hand_type, HT.PAIR)
 
 func test_pass_applies_damage_to_passer() -> void:
@@ -61,6 +94,7 @@ func test_pass_applies_damage_to_passer() -> void:
 	var c1 := _mk("spades", 9)
 	var c2 := _mk("hearts", 9)
 	p1.hand = Hand.new([c1, c2])
+	p1.hand.add_card(_mk("clubs", 3))
 	bs.current_attacker = p1
 	bs.last_play = PlayedHand.new()
 	bs.process_play(p1, [c1, c2])
@@ -78,6 +112,7 @@ func test_pass_at_battle_over() -> void:
 	var c1 := _mk("spades", 9)
 	var c2 := _mk("hearts", 9)
 	p1.hand = Hand.new([c1, c2])
+	p1.hand.add_card(_mk("clubs", 3))
 	bs.current_attacker = p1
 	bs.last_play = PlayedHand.new()
 	bs.process_play(p1, [c1, c2])
@@ -96,6 +131,7 @@ func test_redeal_when_both_empty() -> void:
 	assert_true(redealt)
 	assert_eq(p1.hand.size(), 17)
 	assert_eq(p2.hand.size(), 17)
+	assert_eq(bs.discard_pile.size(), 20)
 
 # ---------- AI tests ----------
 

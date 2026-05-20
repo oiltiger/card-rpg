@@ -17,8 +17,7 @@ enum HandType {
 }
 
 # Identify a hand of cards.
-# Wild cards (jokers or wild-attributed) can substitute for one missing card
-# to complete a recognizable type.
+# Wild cards can substitute normal numbered cards, but never small/big jokers.
 static func identify_hand(cards: Array[Card]) -> int:
 	if cards.is_empty():
 		return HandType.INVALID
@@ -49,26 +48,45 @@ static func identify_hand(cards: Array[Card]) -> int:
 	if direct != HandType.INVALID:
 		return direct
 
-	# Wild substitution: try replacing each wild with every possible value
-	if wilds.size() == 1:
-		for sub_num in range(3, 16):
-			var test_cards := non_wilds.duplicate()
-			test_cards.append(Card.new("spades", sub_num))
-			var r := _identify_without_wild(test_cards)
-			if r != HandType.INVALID:
-				return r
-	# Multiple wilds (rare in current deck)
-	if wilds.size() == 2:
-		for sub1 in range(3, 16):
-			for sub2 in range(3, 16):
-				var test_cards := non_wilds.duplicate()
-				test_cards.append(Card.new("spades", sub1))
-				test_cards.append(Card.new("spades", sub2))
-				var r := _identify_without_wild(test_cards)
-				if r != HandType.INVALID:
-					return r
+	var wild_result := _identify_with_wilds(non_wilds, wilds.size())
+	if wild_result != HandType.INVALID:
+		return wild_result
 
 	return HandType.INVALID
+
+static func _identify_with_wilds(non_wilds: Array[Card], wild_count: int) -> int:
+	if wild_count <= 0:
+		return HandType.INVALID
+	return _try_wild_values(non_wilds, wild_count, [])
+
+static func _try_wild_values(non_wilds: Array[Card], remaining: int, values: Array[int]) -> int:
+	if remaining == 0:
+		var test_cards := non_wilds.duplicate()
+		for value in values:
+			test_cards.append(Card.new("spades", value))
+		return _identify_without_wild(test_cards)
+
+	var best := HandType.INVALID
+	for sub_num in range(3, 16):
+		var next_values := values.duplicate()
+		next_values.append(sub_num)
+		var result := _try_wild_values(non_wilds, remaining - 1, next_values)
+		if _hand_type_priority(result) > _hand_type_priority(best):
+			best = result
+	return best
+
+static func _hand_type_priority(type: int) -> int:
+	match type:
+		HandType.ROYAL_BOMB: return 9
+		HandType.BOMB: return 8
+		HandType.TRIPLE_PAIR: return 7
+		HandType.STRAIGHT: return 6
+		HandType.CONSECUTIVE_PAIRS: return 5
+		HandType.TRIPLE_ONE: return 4
+		HandType.TRIPLE: return 3
+		HandType.PAIR: return 2
+		HandType.SINGLE: return 1
+	return 0
 
 # Pure identification on a card list assumed to contain no wilds.
 static func _identify_without_wild(cards: Array[Card]) -> int:
@@ -131,14 +149,6 @@ static func _identify_without_wild(cards: Array[Card]) -> int:
 		return HandType.STRAIGHT
 	if n >= 6 and n % 2 == 0 and _is_consecutive_pairs(cards):
 		return HandType.CONSECUTIVE_PAIRS
-	if n == 6:
-		var has_four := false
-		for num in numbers:
-			if counts[num] == 4:
-				has_four = true
-		if has_four:
-			return HandType.FOUR_TWO
-
 	return HandType.INVALID
 
 static func _count_numbers(cards: Array[Card]) -> Dictionary:

@@ -62,13 +62,13 @@ func test_real_points_overflow_to_energy_points() -> void:
 	assert_eq(bar.energy_points, 1)
 	assert_eq(bar.real_points, 0)
 
-func test_round_loss_clears_virtual_and_real() -> void:
+func test_round_loss_clears_virtual_and_keeps_existing_real() -> void:
 	var bar := EnergyBar.new()
 	bar.add_virtual(7)
 	bar.real_points = 5
 	bar.on_round_loss(20)  # damage 20 → real += 2
 	assert_eq(bar.virtual_points, 0)
-	assert_eq(bar.real_points, 2)
+	assert_eq(bar.real_points, 7)
 
 func test_taking_damage_adds_real_directly() -> void:
 	var bar := EnergyBar.new()

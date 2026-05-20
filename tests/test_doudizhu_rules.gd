@@ -53,14 +53,14 @@ func test_four_two_pair() -> void:
 		_mk("spades", 7), _mk("hearts", 7), _mk("clubs", 7), _mk("diamonds", 7),
 		_mk("spades", 9), _mk("hearts", 9),
 	]
-	assert_eq(DoudizhuRules.identify_hand(cards), HT.FOUR_TWO)
+	assert_eq(DoudizhuRules.identify_hand(cards), HT.INVALID)
 
 func test_four_two_singles() -> void:
 	var cards: Array[Card] = [
 		_mk("spades", 7), _mk("hearts", 7), _mk("clubs", 7), _mk("diamonds", 7),
 		_mk("spades", 9), _mk("hearts", 11),
 	]
-	assert_eq(DoudizhuRules.identify_hand(cards), HT.FOUR_TWO)
+	assert_eq(DoudizhuRules.identify_hand(cards), HT.INVALID)
 
 func test_bomb() -> void:
 	var cards: Array[Card] = [_mk("spades", 7), _mk("hearts", 7), _mk("clubs", 7), _mk("diamonds", 7)]
@@ -77,6 +77,16 @@ func test_wild_substitution_makes_pair() -> void:
 func test_wild_substitution_makes_straight() -> void:
 	var cards: Array[Card] = [_mk("spades", 3), _mk("hearts", 4), _mk("clubs", 5), _mk("diamonds", 6), _mk("joker", 16)]
 	assert_eq(DoudizhuRules.identify_hand(cards), HT.STRAIGHT)
+
+func test_wild_substitution_makes_bomb() -> void:
+	var cards: Array[Card] = [_mk("spades", 7), _mk("hearts", 7), _mk("clubs", 7), _mk("joker", 16)]
+	assert_eq(DoudizhuRules.identify_hand(cards), HT.BOMB)
+
+func test_wild_cannot_complete_royal_bomb() -> void:
+	var c := _mk("spades", 3)
+	c.add_attribute("wild")
+	var cards: Array[Card] = [c, _mk("joker", 16)]
+	assert_ne(DoudizhuRules.identify_hand(cards), HT.ROYAL_BOMB)
 
 func test_wild_attribute_on_regular_card() -> void:
 	var c1 := _mk("spades", 5)

@@ -26,6 +26,16 @@ func test_use_ultimate_when_energy_present() -> void:
 	assert_true(ok)
 	assert_eq(c.energy_points, 0)
 
+func test_use_ultimate_damages_target() -> void:
+	var c := Combatant.new()
+	var target := Combatant.new()
+	c.energy_points = 1
+	c.energy_bar.energy_points = 1
+	var ok := c.use_ultimate(target)
+	assert_true(ok)
+	assert_eq(c.energy_points, 0)
+	assert_eq(target.hp, 130)
+
 func test_take_damage_reduces_hp_and_gains_energy() -> void:
 	var c := Combatant.new()
 	c.take_damage(30)

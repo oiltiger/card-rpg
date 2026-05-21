@@ -1,6 +1,8 @@
-# scenes/battle_scene.gd  — full implementation (T11)
+# scenes/battle_scene.gd
 class_name BattleSceneNode
 extends Node2D
+
+const SkillSystemRef = preload("res://combat/skill_system.gd")
 
 @onready var main_layout: VBoxContainer = $MainLayout
 @onready var fighter_area: FighterArea = $MainLayout/FighterArea
@@ -8,29 +10,32 @@ extends Node2D
 
 var battle_state: BattleState = null
 var player: Combatant = null
-var ai: Combatant = null
+var ai: AICombatant = null
 var rounds_played: int = 0
 var total_damage_dealt: int = 0
 var max_combo_count: int = 0
 var _current_combo_count: int = 0
+var _pending_wild_select: bool = false
 
 func _ready() -> void:
 	hand_area.play_pressed.connect(_on_play_pressed)
 	hand_area.pass_pressed.connect(_on_pass_pressed)
 	hand_area.ultimate_requested.connect(_on_ultimate_requested)
-	hand_area.restart_requested.connect(_start_new_battle)
+	hand_area.restart_requested.connect(_on_return_to_map)
 	_start_new_battle()
 
 func _start_new_battle() -> void:
-	player = Combatant.new(CharacterData.new("玩家", "斩!", Callable()))
-	ai = AICombatant.new()
-	ai.character_data = CharacterData.new("AI", "", Callable())
+	player = Combatant.new(CharacterData.create(RunState.selected_character_id))
+	ai = AICombatant.new(RunState.selected_ai_difficulty)
+	ai.character_data = CharacterData.new("AI", "", Callable(), "ai", ai.max_hp)
 	battle_state = BattleState.new()
 	battle_state.start_battle(player, ai)
 	rounds_played = 0
 	total_damage_dealt = 0
 	max_combo_count = 0
 	_current_combo_count = 0
+	_pending_wild_select = false
+	hand_area.set_ultimate_text("大招")
 	hand_area.hide_restart_button()
 	hand_area.clear_play_zone()
 	hand_area.set_last_play_text("等待出牌...")
@@ -41,16 +46,22 @@ func _start_new_battle() -> void:
 
 func _refresh_ui() -> void:
 	fighter_area.update_hp(player.hp, player.max_hp, ai.hp, ai.max_hp, ai.hand.size())
+	fighter_area.update_names(player.character_data.display_name, RunState.selected_ai_difficulty)
 	fighter_area.update_round(battle_state.round_number)
 	fighter_area.update_energy(
 		player.energy_bar.virtual_points, player.energy_bar.real_points, player.energy_bar.energy_points,
 		ai.energy_bar.virtual_points, ai.energy_bar.real_points, ai.energy_bar.energy_points
 	)
-	hand_area.set_ultimate_enabled(player.energy_points > 0)
+	hand_area.set_ultimate_enabled(_pending_wild_select or player.energy_points > 0)
 	var is_player_turn := battle_state.current_attacker == player and battle_state.turn_phase != BattleState.TurnPhase.BATTLE_OVER
-	hand_area.set_buttons_enabled(is_player_turn, is_player_turn and not battle_state.last_play.is_empty())
+	if _pending_wild_select:
+		hand_area.set_buttons_enabled(false, false)
+	else:
+		hand_area.set_buttons_enabled(is_player_turn, is_player_turn and not battle_state.last_play.is_empty())
 
 func _on_play_pressed() -> void:
+	if _pending_wild_select:
+		return
 	if battle_state.current_attacker != player:
 		return
 	var selected := hand_area.get_selected_cards()
@@ -70,7 +81,10 @@ func _on_play_pressed() -> void:
 	hand_area.show_played_cards("player", selected, CardToAction.action_name(result.hand_type))
 	if result["penalty_damage"] > 0:
 		hand_area.clear_play_zone()
-		hand_area.set_last_play_text("手牌打完！AI 受到 %d 惩罚伤害，重新发牌！" % result["penalty_damage"])
+		if result["reflected_damage"] > 0:
+			hand_area.set_last_play_text("手牌打完！惩罚伤害被反弹，我方受到 %d 伤害！" % result["reflected_damage"])
+		else:
+			hand_area.set_last_play_text("手牌打完！AI 受到 %d 惩罚伤害，重新发牌！" % result["penalty_damage"])
 	else:
 		hand_area.set_last_play_text("我方: %s (%d 伤害)" % [CardToAction.action_name(result.hand_type), result.damage])
 	hand_area.render_hand(player.hand.get_cards())
@@ -82,13 +96,18 @@ func _on_play_pressed() -> void:
 	_ai_turn()
 
 func _on_pass_pressed() -> void:
+	if _pending_wild_select:
+		return
 	if battle_state.current_attacker != player:
 		return
 	if battle_state.last_play.is_empty():
 		return
 	var result := battle_state.process_pass(player)
 	hand_area.clear_play_zone()
-	hand_area.set_last_play_text("我方: 过牌 (受到 %d 伤害)" % result.damage_taken)
+	if result.reflected_damage > 0:
+		hand_area.set_last_play_text("我方: 过牌 (反弹 %d 伤害)" % result.reflected_damage)
+	else:
+		hand_area.set_last_play_text("我方: 过牌 (受到 %d 伤害)" % result.damage_taken)
 	_current_combo_count = 0
 	_refresh_ui()
 	if result.battle_over:
@@ -101,12 +120,23 @@ func _ai_turn() -> void:
 	if battle_state.turn_phase == BattleState.TurnPhase.BATTLE_OVER:
 		return
 	while battle_state.current_attacker == ai:
+		if ai.should_use_ultimate(battle_state):
+			SkillSystemRef.use_ultimate(ai, player, battle_state.rng)
+			fighter_area.show_skill_label("AI 技能释放！")
+			_refresh_ui()
+			if player.is_dead():
+				battle_state.turn_phase = BattleState.TurnPhase.BATTLE_OVER
+				_show_battle_over()
+				return
 		var choice := ai.choose_card(battle_state)
 		if choice.action == "pass":
 			var result := battle_state.process_pass(ai)
 			hand_area.clear_play_zone()
-			hand_area.set_last_play_text("AI: 过牌 (受到 %d 伤害)" % result.damage_taken)
-			total_damage_dealt += result.damage_taken
+			if result.reflected_damage > 0:
+				hand_area.set_last_play_text("AI: 过牌 (反弹 %d 伤害)" % result.reflected_damage)
+			else:
+				hand_area.set_last_play_text("AI: 过牌 (受到 %d 伤害)" % result.damage_taken)
+			total_damage_dealt += result.damage_taken + result.reflected_damage
 			_refresh_ui()
 			if result.battle_over:
 				_show_battle_over()
@@ -119,7 +149,10 @@ func _ai_turn() -> void:
 			hand_area.show_played_cards("ai", choice.cards, CardToAction.action_name(result.hand_type))
 			if result["penalty_damage"] > 0:
 				hand_area.clear_play_zone()
-				hand_area.set_last_play_text("AI 手牌打完！我方受到 %d 惩罚伤害，重新发牌！" % result["penalty_damage"])
+				if result["reflected_damage"] > 0:
+					hand_area.set_last_play_text("AI 手牌打完！惩罚伤害被反弹，AI 受到 %d 伤害！" % result["reflected_damage"])
+				else:
+					hand_area.set_last_play_text("AI 手牌打完！我方受到 %d 惩罚伤害，重新发牌！" % result["penalty_damage"])
 				hand_area.render_hand(player.hand.get_cards())
 				_refresh_ui()
 				if result.get("battle_over", false):
@@ -134,13 +167,47 @@ func _ai_turn() -> void:
 func _on_ultimate_requested() -> void:
 	if battle_state == null or player == null:
 		return
-	var ok := player.use_ultimate(ai)
+	if _pending_wild_select:
+		_confirm_wild_selection()
+		return
+	if player.character_data != null and player.character_data.ultimate_id == "make_wild":
+		if player.energy_points <= 0:
+			return
+		_pending_wild_select = true
+		hand_area.clear_selection()
+		hand_area.set_ultimate_text("确认")
+		hand_area.set_last_play_text("请选择一张牌成为百搭")
+		_refresh_ui()
+		return
+	var ok := SkillSystemRef.use_ultimate(player, ai, battle_state.rng)
 	if ok:
-		fighter_area.show_skill_label("技能释放！20 伤害")
+		fighter_area.show_skill_label("技能释放！")
 		_refresh_ui()
 		if ai.is_dead():
 			battle_state.turn_phase = BattleState.TurnPhase.BATTLE_OVER
 			_show_battle_over()
+
+func _confirm_wild_selection() -> void:
+	var selected := hand_area.get_selected_cards()
+	if selected.size() != 1:
+		hand_area.set_last_play_text("请选择一张牌成为百搭")
+		return
+	var card: Card = selected[0]
+	if not SkillSystemRef.can_make_card_wild(player, card):
+		hand_area.set_last_play_text("请选择一张非大小王、尚未成为百搭的手牌")
+		return
+	if not SkillSystemRef.spend_ultimate_energy(player):
+		_pending_wild_select = false
+		hand_area.set_ultimate_text("大招")
+		_refresh_ui()
+		return
+	SkillSystemRef.make_card_wild(player, card)
+	_pending_wild_select = false
+	hand_area.set_ultimate_text("大招")
+	hand_area.render_hand(player.hand.get_cards())
+	hand_area.set_last_play_text("技能释放！已标记一张百搭牌")
+	fighter_area.show_skill_label("技能释放！")
+	_refresh_ui()
 
 func _show_battle_over() -> void:
 	var winner := battle_state.get_winner()
@@ -149,4 +216,13 @@ func _show_battle_over() -> void:
 		[who, battle_state.round_number, total_damage_dealt, max_combo_count])
 	hand_area.set_buttons_enabled(false, false)
 	hand_area.set_ultimate_enabled(false)
+	hand_area.set_restart_text("返回关卡选择" if winner == player else "重新选择角色")
 	hand_area.show_restart_button()
+
+func _on_return_to_map() -> void:
+	if battle_state.get_winner() == player:
+		RunState.last_battle_won = true
+		get_tree().change_scene_to_file("res://scenes/StageSelectScene.tscn")
+	else:
+		RunState.last_battle_won = false
+		get_tree().change_scene_to_file("res://scenes/CharacterSelectScene.tscn")

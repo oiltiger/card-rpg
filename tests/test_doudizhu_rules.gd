@@ -48,19 +48,82 @@ func test_consecutive_pairs() -> void:
 	]
 	assert_eq(DoudizhuRules.identify_hand(cards), HT.CONSECUTIVE_PAIRS)
 
+func test_airplane_with_single_wings() -> void:
+	var cards: Array[Card] = [
+		_mk("spades", 7), _mk("hearts", 7), _mk("clubs", 7),
+		_mk("spades", 8), _mk("hearts", 8), _mk("clubs", 8),
+		_mk("spades", 3), _mk("hearts", 4),
+	]
+	assert_eq(DoudizhuRules.identify_hand(cards), HT.AIRPLANE_SINGLE)
+
+func test_airplane_with_pair_wings() -> void:
+	var cards: Array[Card] = [
+		_mk("spades", 8), _mk("hearts", 8), _mk("clubs", 8),
+		_mk("spades", 9), _mk("hearts", 9), _mk("clubs", 9),
+		_mk("spades", 4), _mk("hearts", 4),
+		_mk("spades", 5), _mk("hearts", 5),
+	]
+	assert_eq(DoudizhuRules.identify_hand(cards), HT.AIRPLANE_PAIR)
+
+func test_higher_airplane_beats_lower_same_length() -> void:
+	var atk: Array[Card] = [
+		_mk("spades", 8), _mk("hearts", 8), _mk("clubs", 8),
+		_mk("spades", 9), _mk("hearts", 9), _mk("clubs", 9),
+		_mk("spades", 4), _mk("hearts", 5),
+	]
+	var def: Array[Card] = [
+		_mk("spades", 7), _mk("hearts", 7), _mk("clubs", 7),
+		_mk("spades", 8), _mk("hearts", 8), _mk("clubs", 8),
+		_mk("spades", 3), _mk("hearts", 4),
+	]
+	assert_true(DoudizhuRules.can_beat(atk, def))
+
+func test_airplane_must_match_length_to_beat() -> void:
+	var atk: Array[Card] = [
+		_mk("spades", 8), _mk("hearts", 8), _mk("clubs", 8),
+		_mk("spades", 9), _mk("hearts", 9), _mk("clubs", 9),
+		_mk("spades", 10), _mk("hearts", 10), _mk("clubs", 10),
+		_mk("spades", 3), _mk("hearts", 4), _mk("clubs", 5),
+	]
+	var def: Array[Card] = [
+		_mk("spades", 7), _mk("hearts", 7), _mk("clubs", 7),
+		_mk("spades", 8), _mk("hearts", 8), _mk("clubs", 8),
+		_mk("spades", 3), _mk("hearts", 4),
+	]
+	assert_false(DoudizhuRules.can_beat(atk, def))
+
 func test_four_two_pair() -> void:
 	var cards: Array[Card] = [
 		_mk("spades", 7), _mk("hearts", 7), _mk("clubs", 7), _mk("diamonds", 7),
 		_mk("spades", 9), _mk("hearts", 9),
 	]
-	assert_eq(DoudizhuRules.identify_hand(cards), HT.INVALID)
+	assert_eq(DoudizhuRules.identify_hand(cards), HT.FOUR_TWO)
 
 func test_four_two_singles() -> void:
 	var cards: Array[Card] = [
 		_mk("spades", 7), _mk("hearts", 7), _mk("clubs", 7), _mk("diamonds", 7),
 		_mk("spades", 9), _mk("hearts", 11),
 	]
-	assert_eq(DoudizhuRules.identify_hand(cards), HT.INVALID)
+	assert_eq(DoudizhuRules.identify_hand(cards), HT.FOUR_TWO)
+
+func test_four_two_beats_lower_four_two() -> void:
+	var atk: Array[Card] = [
+		_mk("spades", 8), _mk("hearts", 8), _mk("clubs", 8), _mk("diamonds", 8),
+		_mk("spades", 3), _mk("hearts", 4),
+	]
+	var def: Array[Card] = [
+		_mk("spades", 7), _mk("hearts", 7), _mk("clubs", 7), _mk("diamonds", 7),
+		_mk("spades", 9), _mk("hearts", 9),
+	]
+	assert_true(DoudizhuRules.can_beat(atk, def))
+
+func test_four_two_does_not_beat_triple_pair() -> void:
+	var atk: Array[Card] = [
+		_mk("spades", 7), _mk("hearts", 7), _mk("clubs", 7), _mk("diamonds", 7),
+		_mk("spades", 9), _mk("hearts", 9),
+	]
+	var def: Array[Card] = [_mk("spades", 5), _mk("hearts", 5), _mk("clubs", 5), _mk("diamonds", 9), _mk("hearts", 9)]
+	assert_false(DoudizhuRules.can_beat(atk, def))
 
 func test_bomb() -> void:
 	var cards: Array[Card] = [_mk("spades", 7), _mk("hearts", 7), _mk("clubs", 7), _mk("diamonds", 7)]

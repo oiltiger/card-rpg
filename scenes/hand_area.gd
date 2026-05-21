@@ -31,6 +31,9 @@ func _ready() -> void:
 func show_restart_button() -> void:
 	restart_button.visible = true
 
+func set_restart_text(text: String) -> void:
+	restart_button.text = text
+
 func hide_restart_button() -> void:
 	restart_button.visible = false
 
@@ -43,6 +46,7 @@ func render_hand(cards: Array[Card]) -> void:
 	for c in sorted:
 		var btn := Button.new()
 		btn.text = _card_label(c)
+		btn.custom_minimum_size = Vector2(64, 60)
 		btn.toggle_mode = true
 		btn.toggled.connect(func(pressed: bool) -> void: _on_card_toggled(c, pressed))
 		card_container.add_child(btn)
@@ -89,7 +93,10 @@ func _card_label(c: Card) -> String:
 		15: n_str = "2"
 	var suit_map: Dictionary = {"spades": "♠", "hearts": "♥", "diamonds": "♦", "clubs": "♣"}
 	var suit_char: String = suit_map.get(c.suit, "?") as String
-	return "%s%s" % [suit_char, n_str]
+	var label := "%s%s" % [suit_char, n_str]
+	if c.is_wild():
+		label += "\n★"
+	return label
 
 func _on_card_toggled(c: Card, pressed: bool) -> void:
 	if pressed:
@@ -112,6 +119,9 @@ func set_last_play_text(text: String) -> void:
 
 func set_ultimate_enabled(enabled: bool) -> void:
 	ultimate_button.disabled = not enabled
+
+func set_ultimate_text(text: String) -> void:
+	ultimate_button.text = text
 
 func set_buttons_enabled(play_enabled: bool, pass_enabled: bool) -> void:
 	play_button.disabled = not play_enabled

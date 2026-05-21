@@ -11,6 +11,8 @@ extends Control
 @onready var enemy_hp_label: Label = $InfoBar/EnemyHPLabel
 @onready var player_energy_label: Label = $EnergyRow/PlayerEnergyLabel
 @onready var enemy_energy_label: Label = $EnergyRow/EnemyEnergyLabel
+@onready var player_name_label: Label = $NameRow/PlayerNameLabel
+@onready var enemy_name_label: Label = $NameRow/EnemyNameLabel
 
 func _ready() -> void:
 	skill_label.visible = false
@@ -21,6 +23,10 @@ func update_hp(player_hp: int, player_max: int, enemy_hp: int, enemy_max: int, a
 
 func update_round(n: int) -> void:
 	round_label.text = "第 %d 回合" % n
+
+func update_names(player_name: String, ai_difficulty: String) -> void:
+	player_name_label.text = player_name
+	enemy_name_label.text = "AI %s" % ai_difficulty
 
 func update_energy(p_virtual: int, p_real: int, p_energy: int, e_virtual: int, e_real: int, e_energy: int) -> void:
 	player_energy_label.text = "蓄气: %d/10  积: %s" % [p_real + p_virtual, _to_chinese(p_energy)]

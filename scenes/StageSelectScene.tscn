@@ -1,0 +1,38 @@
+[gd_scene load_steps=2 format=3 uid="uid://stageselect"]
+
+[ext_resource type="Script" path="res://scenes/stage_select_scene.gd" id="1_ss"]
+
+[node name="StageSelectScene" type="Control"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1_ss")
+
+[node name="Root" type="VBoxContainer" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 48.0
+offset_top = 44.0
+offset_right = -48.0
+offset_bottom = -44.0
+theme_override_constants/separation = 24
+alignment = 1
+
+[node name="Title" type="Label" parent="Root"]
+text = "选择关卡"
+horizontal_alignment = 1
+
+[node name="SelectedLabel" type="Label" parent="Root"]
+text = "当前角色"
+horizontal_alignment = 1
+
+[node name="StageRow" type="HBoxContainer" parent="Root"]
+size_flags_vertical = 3
+theme_override_constants/separation = 18
+alignment = 1
+
+[node name="BackButton" type="Button" parent="Root"]
+text = "返回角色选择"
+
+[connection signal="pressed" from="Root/BackButton" to="." method="_on_back_button_pressed"]

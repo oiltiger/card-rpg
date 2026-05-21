@@ -7,9 +7,11 @@ config_version=5
 config/name="Card RPG"
 config/features=PackedStringArray("4.3", "GL Compatibility")
 config/icon="res://icon.svg"
-run/main_scene="res://scenes/BattleScene.tscn"
+run/main_scene="res://scenes/CharacterSelectScene.tscn"
 
 [autoload]
+
+RunState="*res://run_state.gd"
 
 [editor_plugins]
 

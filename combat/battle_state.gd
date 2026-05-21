@@ -2,6 +2,8 @@
 class_name BattleState
 extends RefCounted
 
+const SkillSystemRef = preload("res://combat/skill_system.gd")
+
 enum TurnPhase {
 	WAITING_PLAY,
 	WAITING_RESPONSE,
@@ -67,6 +69,7 @@ func process_play(combatant: Combatant, cards: Array[Card]) -> Dictionary:
 		"virtual_added": 0,
 		"hand_type": DoudizhuRules.HandType.INVALID,
 		"penalty_damage": 0,
+		"reflected_damage": 0,
 		"battle_over": false,
 	}
 
@@ -85,7 +88,7 @@ func process_play(combatant: Combatant, cards: Array[Card]) -> Dictionary:
 
 	result.valid = true
 	result.hand_type = hand_type
-	var damage := CardToAction.compute_damage(hand_type, cards.size())
+	var damage: int = CardToAction.compute_damage(hand_type, cards.size()) + SkillSystemRef.bonus_damage(combatant, hand_type, cards)
 	result.damage = damage
 
 	# Combo check
@@ -97,15 +100,19 @@ func process_play(combatant: Combatant, cards: Array[Card]) -> Dictionary:
 	var combo_ok := combatant.combo_state.check_combo(hand_type, cards.size(), has_wild)
 	result.combo_continued = combo_ok
 	if combo_ok:
-		combatant.energy_bar.add_virtual(cards.size())
-		result.virtual_added = cards.size()
+		var virtual_gain: int = cards.size() + SkillSystemRef.bonus_virtual(combatant, cards)
+		combatant.energy_bar.add_virtual(virtual_gain)
+		result.virtual_added = virtual_gain
 	else:
 		# Combo broken — convert, reset, start fresh
 		combatant.energy_bar.convert_virtual_to_real()
 		combatant.combo_state.reset()
 		combatant.combo_state.check_combo(hand_type, cards.size(), has_wild)
-		combatant.energy_bar.add_virtual(cards.size())
+		var virtual_gain: int = cards.size() + SkillSystemRef.bonus_virtual(combatant, cards)
+		combatant.energy_bar.add_virtual(virtual_gain)
+		result.virtual_added = virtual_gain
 		combatant.energy_points = combatant.energy_bar.energy_points
+	SkillSystemRef.after_valid_play(combatant)
 
 	# Record this play as the new last_play
 	last_play = PlayedHand.new(hand_type, cards, damage, combatant)
@@ -121,13 +128,19 @@ func process_play(combatant: Combatant, cards: Array[Card]) -> Dictionary:
 			var penalty := other.hand.size() * 10
 			combatant.energy_bar.convert_virtual_to_real()
 			combatant.energy_points = combatant.energy_bar.energy_points
-			var dead := other.take_damage(penalty, false)
+			var damage_outcome := _apply_damage_or_reflect(other, combatant, penalty)
 			result["penalty_damage"] = penalty
+			result["reflected_damage"] = damage_outcome.reflected_damage
 			# Combo: finisher keeps state, opponent resets
 			other.combo_state.reset()
-			other.energy_bar.on_round_loss(penalty)
+			if damage_outcome.reflected_damage > 0:
+				combatant.energy_bar.on_round_loss(penalty)
+				other.energy_bar.on_round_win()
+			else:
+				other.energy_bar.on_round_loss(penalty)
 			other.energy_points = other.energy_bar.energy_points
-			if dead:
+			combatant.energy_points = combatant.energy_bar.energy_points
+			if damage_outcome.dead or damage_outcome.reflected_dead:
 				turn_phase = TurnPhase.BATTLE_OVER
 				result["battle_over"] = true
 			else:
@@ -144,6 +157,7 @@ func process_play(combatant: Combatant, cards: Array[Card]) -> Dictionary:
 func process_pass(combatant: Combatant) -> Dictionary:
 	var result := {
 		"damage_taken": 0,
+		"reflected_damage": 0,
 		"hp_remaining": combatant.hp,
 		"battle_over": false,
 		"round_ended": false,
@@ -155,15 +169,20 @@ func process_pass(combatant: Combatant) -> Dictionary:
 
 	var dmg: int = last_play.damage
 	var attacker: Combatant = last_play.combatant_ref
-	var dead := combatant.take_damage(dmg, false)
-	result.damage_taken = dmg
+	var damage_outcome := _apply_damage_or_reflect(combatant, attacker, dmg)
+	result.damage_taken = damage_outcome.damage_taken
+	result.reflected_damage = damage_outcome.reflected_damage
 	result.hp_remaining = combatant.hp
 	result.round_ended = true
 
 	# Energy settlement
-	attacker.energy_bar.on_round_win()
+	if damage_outcome.reflected_damage > 0:
+		combatant.energy_bar.on_round_win()
+		attacker.energy_bar.on_round_loss(dmg)
+	else:
+		attacker.energy_bar.on_round_win()
+		combatant.energy_bar.on_round_loss(dmg)
 	attacker.energy_points = attacker.energy_bar.energy_points
-	combatant.energy_bar.on_round_loss(dmg)
 	combatant.energy_points = combatant.energy_bar.energy_points
 	# Reset combo states for both
 	attacker.combo_state.reset()
@@ -172,10 +191,10 @@ func process_pass(combatant: Combatant) -> Dictionary:
 	# Round end housekeeping
 	round_number += 1
 	last_play = PlayedHand.new()
-	current_attacker = attacker  # winner starts next round
+	current_attacker = combatant if damage_outcome.reflected_damage > 0 else attacker
 	turn_phase = TurnPhase.WAITING_PLAY
 
-	if dead:
+	if damage_outcome.dead or damage_outcome.reflected_dead:
 		turn_phase = TurnPhase.BATTLE_OVER
 		result.battle_over = true
 
@@ -183,6 +202,23 @@ func process_pass(combatant: Combatant) -> Dictionary:
 	if not redeal_if_needed() and current_attacker.hand.is_empty():
 		current_attacker = _other(current_attacker)
 
+	return result
+
+func _apply_damage_or_reflect(target: Combatant, source: Combatant, amount: int) -> Dictionary:
+	var result := {
+		"damage_taken": amount,
+		"reflected_damage": 0,
+		"dead": false,
+		"reflected_dead": false,
+	}
+	if target.reflect_next_damage:
+		target.reflect_next_damage = false
+		result.damage_taken = 0
+		result.reflected_damage = amount
+		if source != null:
+			result.reflected_dead = source.take_damage(amount, false)
+	else:
+		result.dead = target.take_damage(amount, false)
 	return result
 
 func get_winner() -> Combatant:

@@ -11,6 +11,8 @@ enum HandType {
 	TRIPLE_PAIR,
 	STRAIGHT,
 	CONSECUTIVE_PAIRS,
+	AIRPLANE_SINGLE,
+	AIRPLANE_PAIR,
 	FOUR_TWO,
 	BOMB,
 	ROYAL_BOMB,
@@ -79,6 +81,8 @@ static func _hand_type_priority(type: int) -> int:
 	match type:
 		HandType.ROYAL_BOMB: return 9
 		HandType.BOMB: return 8
+		HandType.AIRPLANE_PAIR: return 7
+		HandType.AIRPLANE_SINGLE: return 7
 		HandType.TRIPLE_PAIR: return 7
 		HandType.STRAIGHT: return 6
 		HandType.CONSECUTIVE_PAIRS: return 5
@@ -149,6 +153,12 @@ static func _identify_without_wild(cards: Array[Card]) -> int:
 		return HandType.STRAIGHT
 	if n >= 6 and n % 2 == 0 and _is_consecutive_pairs(cards):
 		return HandType.CONSECUTIVE_PAIRS
+	if n >= 8 and n % 4 == 0 and _is_airplane_single(cards):
+		return HandType.AIRPLANE_SINGLE
+	if n >= 10 and n % 5 == 0 and _is_airplane_pair(cards):
+		return HandType.AIRPLANE_PAIR
+	if n == 6 and _is_four_two(cards):
+		return HandType.FOUR_TWO
 	return HandType.INVALID
 
 static func _count_numbers(cards: Array[Card]) -> Dictionary:
@@ -187,6 +197,56 @@ static func _is_consecutive_pairs(cards: Array[Card]) -> bool:
 			return false
 	return true
 
+static func _is_four_two(cards: Array[Card]) -> bool:
+	if cards.size() != 6:
+		return false
+	var counts := _count_numbers(cards)
+	for num in counts:
+		if counts[num] == 4:
+			return true
+	return false
+
+static func _is_airplane_single(cards: Array[Card]) -> bool:
+	var triple_count := cards.size() / 4
+	return not _find_consecutive_triple_nums(cards, triple_count).is_empty()
+
+static func _is_airplane_pair(cards: Array[Card]) -> bool:
+	var triple_count := cards.size() / 5
+	var triple_nums := _find_consecutive_triple_nums(cards, triple_count)
+	if triple_nums.is_empty():
+		return false
+	var counts := _count_numbers(cards)
+	var pair_count := 0
+	for num in counts:
+		if num in triple_nums:
+			if counts[num] != 3:
+				return false
+		elif counts[num] == 2:
+			pair_count += 1
+		else:
+			return false
+	return pair_count == triple_count
+
+static func _find_consecutive_triple_nums(cards: Array[Card], triple_count: int) -> Array:
+	if triple_count < 2:
+		return []
+	var counts := _count_numbers(cards)
+	var candidates := []
+	for num in counts:
+		if num < 15 and counts[num] >= 3:
+			candidates.append(num)
+	candidates.sort()
+	for i in range(0, candidates.size() - triple_count + 1):
+		var seq := candidates.slice(i, i + triple_count)
+		var ok := true
+		for j in range(1, seq.size()):
+			if seq[j] != seq[j - 1] + 1:
+				ok = false
+				break
+		if ok:
+			return seq
+	return []
+
 # ---------- Comparison ----------
 
 # Returns true if attacker beats defender. defender is the previous played hand.
@@ -209,11 +269,13 @@ static func can_beat(attacker: Array[Card], defender: Array[Card]) -> bool:
 		if def_type == HandType.BOMB:
 			return _anchor(attacker, atk_type) > _anchor(defender, def_type)
 		return true
+	if def_type == HandType.BOMB or def_type == HandType.ROYAL_BOMB:
+		return false
 	# Same type required for normal compare
 	if atk_type != def_type:
 		return false
 	# Same type — for STRAIGHT/CONSECUTIVE_PAIRS, must be same length
-	if atk_type == HandType.STRAIGHT or atk_type == HandType.CONSECUTIVE_PAIRS:
+	if atk_type in [HandType.STRAIGHT, HandType.CONSECUTIVE_PAIRS, HandType.AIRPLANE_SINGLE, HandType.AIRPLANE_PAIR]:
 		if attacker.size() != defender.size():
 			return false
 	return _anchor(attacker, atk_type) > _anchor(defender, def_type)
@@ -245,6 +307,12 @@ static func _anchor(cards: Array[Card], type: int) -> int:
 					return num
 			if non_wilds.size() > 0:
 				return non_wilds[0].number
+			return 0
+		HandType.AIRPLANE_SINGLE, HandType.AIRPLANE_PAIR:
+			var triple_count := cards.size() / (4 if type == HandType.AIRPLANE_SINGLE else 5)
+			var triple_nums := _find_consecutive_triple_nums(non_wilds, triple_count)
+			if not triple_nums.is_empty():
+				return triple_nums[0]
 			return 0
 		HandType.STRAIGHT, HandType.CONSECUTIVE_PAIRS:
 			var nums: Array[int] = []

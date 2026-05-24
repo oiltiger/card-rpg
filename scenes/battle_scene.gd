@@ -48,11 +48,11 @@ func _refresh_ui() -> void:
 	fighter_area.update_hp(player.hp, player.max_hp, ai.hp, ai.max_hp, ai.hand.size())
 	fighter_area.update_names(player.character_data.display_name, RunState.selected_ai_difficulty)
 	fighter_area.update_round(battle_state.round_number)
-	fighter_area.update_energy(
-		player.energy_bar.virtual_points, player.energy_bar.real_points, player.energy_bar.energy_points,
-		ai.energy_bar.virtual_points, ai.energy_bar.real_points, ai.energy_bar.energy_points
+	fighter_area.update_resources(
+		player.resource_bar.combo_points, player.resource_bar.max_combo_points, player.resource_bar.mana, player.resource_bar.max_mana,
+		ai.resource_bar.combo_points, ai.resource_bar.max_combo_points, ai.resource_bar.mana, ai.resource_bar.max_mana
 	)
-	hand_area.set_ultimate_enabled(_pending_wild_select or player.energy_points > 0)
+	hand_area.set_ultimate_enabled(_pending_wild_select or SkillSystemRef.can_use_character_skill(player))
 	var is_player_turn := battle_state.current_attacker == player and battle_state.turn_phase != BattleState.TurnPhase.BATTLE_OVER
 	if _pending_wild_select:
 		hand_area.set_buttons_enabled(false, false)
@@ -77,7 +77,7 @@ func _on_play_pressed() -> void:
 		_current_combo_count += 1
 		max_combo_count = max(max_combo_count, _current_combo_count)
 	else:
-		_current_combo_count = 1
+		_current_combo_count = 0
 	hand_area.show_played_cards("player", selected, CardToAction.action_name(result.hand_type))
 	if result["penalty_damage"] > 0:
 		hand_area.clear_play_zone()
@@ -171,7 +171,7 @@ func _on_ultimate_requested() -> void:
 		_confirm_wild_selection()
 		return
 	if player.character_data != null and player.character_data.ultimate_id == "make_wild":
-		if player.energy_points <= 0:
+		if not SkillSystemRef.can_use_character_skill(player):
 			return
 		_pending_wild_select = true
 		hand_area.clear_selection()
@@ -196,7 +196,7 @@ func _confirm_wild_selection() -> void:
 	if not SkillSystemRef.can_make_card_wild(player, card):
 		hand_area.set_last_play_text("请选择一张非大小王、尚未成为百搭的手牌")
 		return
-	if not SkillSystemRef.spend_ultimate_energy(player):
+	if not SkillSystemRef.spend_skill_mana(player):
 		_pending_wild_select = false
 		hand_area.set_ultimate_text("大招")
 		_refresh_ui()

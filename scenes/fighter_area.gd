@@ -28,18 +28,18 @@ func update_names(player_name: String, ai_difficulty: String) -> void:
 	player_name_label.text = player_name
 	enemy_name_label.text = "AI %s" % ai_difficulty
 
-func update_energy(p_virtual: int, p_real: int, p_energy: int, e_virtual: int, e_real: int, e_energy: int) -> void:
-	player_energy_label.text = "蓄气: %d/10  积: %s" % [p_real + p_virtual, _to_chinese(p_energy)]
-	enemy_energy_label.text = "蓄气: %d/10  积: %s" % [e_real + e_virtual, _to_chinese(e_energy)]
-
-static func _to_chinese(n: int) -> String:
-	const NUMS := ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十"]
-	if n <= 0:
-		return "无"
-	var s := ""
-	for i in range(n):
-		s += NUMS[i % 10]
-	return s
+func update_resources(
+	p_combo: int,
+	p_max_combo: int,
+	p_mana: int,
+	p_max_mana: int,
+	e_combo: int,
+	e_max_combo: int,
+	e_mana: int,
+	e_max_mana: int
+) -> void:
+	player_energy_label.text = "连击: %d/%d  蓝: %d/%d" % [p_combo, p_max_combo, p_mana, p_max_mana]
+	enemy_energy_label.text = "连击: %d/%d  蓝: %d/%d" % [e_combo, e_max_combo, e_mana, e_max_mana]
 
 func show_skill_label(text: String) -> void:
 	skill_label.text = text

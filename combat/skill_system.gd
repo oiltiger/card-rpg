@@ -2,40 +2,37 @@
 class_name SkillSystem
 extends RefCounted
 
-static func bonus_damage(combatant, hand_type: int, cards: Array[Card]) -> int:
+static func bonus_damage(combatant, hand_type: int, _cards: Array[Card]) -> int:
 	if combatant.character_data == null:
 		return 0
 	match combatant.character_data.passive_id:
 		"warrior_damage":
-			if hand_type == DoudizhuRules.HandType.BOMB or hand_type == DoudizhuRules.HandType.FOUR_TWO:
+			if hand_type in [DoudizhuRules.HandType.BOMB, DoudizhuRules.HandType.STRAIGHT_FLUSH, DoudizhuRules.HandType.FOUR_TWO]:
 				return 10
 	return 0
 
-static func bonus_virtual(combatant, cards: Array[Card]) -> int:
+static func bonus_combo(combatant, cards: Array[Card]) -> int:
 	if combatant.character_data == null:
 		return 0
-	if combatant.character_data.passive_id != "wild_virtual":
+	if combatant.character_data.passive_id != "wild_combo":
 		return 0
 	for c in cards:
 		if c.is_wild():
 			return 1
 	return 0
 
-static func after_valid_play(combatant) -> void:
+static func after_valid_play(combatant, combo_continued: bool) -> void:
 	if combatant.character_data == null:
 		return
 	if combatant.character_data.passive_id != "monk_combo":
 		return
 	combatant.combo_play_count += 1
-	if combatant.combo_play_count % 3 == 0:
-		combatant.energy_bar.add_real_from_damage(10)
-		combatant.energy_points = combatant.energy_bar.energy_points
+	if combo_continued and combatant.combo_play_count % 3 == 0:
+		combatant.resource_bar.gain_combo(1)
 
 static func use_ultimate(user, target = null, rng: RandomNumberGenerator = null) -> bool:
-	if user.energy_points <= 0:
+	if not spend_skill_mana(user):
 		return false
-	user.energy_points -= 1
-	user.energy_bar.energy_points = user.energy_points
 	if user.character_data == null:
 		if target != null:
 			target.take_damage(20)
@@ -67,12 +64,18 @@ static func make_card_wild(user, card: Card) -> bool:
 	card.add_attribute("wild")
 	return true
 
-static func spend_ultimate_energy(user) -> bool:
-	if user.energy_points <= 0:
+static func can_use_character_skill(user) -> bool:
+	if user == null or user.resource_bar == null or user.character_data == null:
 		return false
-	user.energy_points -= 1
-	user.energy_bar.energy_points = user.energy_points
-	return true
+	return user.resource_bar.mana >= user.character_data.character_skill_mana_cost
+
+static func spend_skill_mana(user) -> bool:
+	if user == null or user.resource_bar == null:
+		return false
+	var cost := 1
+	if user.character_data != null:
+		cost = user.character_data.character_skill_mana_cost
+	return user.resource_bar.spend_mana(cost)
 
 static func _make_random_normal_card_wild(user, rng: RandomNumberGenerator = null) -> void:
 	var candidates: Array[Card] = []

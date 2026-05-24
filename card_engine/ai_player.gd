@@ -43,16 +43,17 @@ func _choose_easy(battle_state) -> Dictionary:
 
 func _choose_normal(battle_state) -> Dictionary:
 	var last: PlayedHand = battle_state.last_play
+	var opponent: Combatant = battle_state.player if battle_state.enemy == self else battle_state.enemy
 	if last != null and not last.is_empty() and last.combatant_ref != self:
-		var counter := _find_smallest_counter(last.cards, false)
+		var counter := _find_best_counter(last.cards, opponent, false)
 		if counter.is_empty():
-			counter = _find_smallest_counter(last.cards, true)
+			counter = _find_best_counter(last.cards, opponent, true)
 		if counter.is_empty():
 			return {"action": "pass", "cards": []}
 		return {"action": "play", "cards": counter}
-	var long_play := _find_best_long_play(false)
-	if not long_play.is_empty():
-		return {"action": "play", "cards": long_play}
+	var scored_play := _find_best_scored_opening_play(opponent, false)
+	if not scored_play.is_empty():
+		return {"action": "play", "cards": scored_play}
 	return _choose_easy(battle_state)
 
 func _choose_hard(battle_state) -> Dictionary:
@@ -60,19 +61,19 @@ func _choose_hard(battle_state) -> Dictionary:
 	var last: PlayedHand = battle_state.last_play
 	if last != null and not last.is_empty() and last.combatant_ref != self:
 		var allow_power := opponent.hand.size() <= 3 or hp <= 120
-		var counter := _find_smallest_counter(last.cards, allow_power)
+		var counter := _find_best_counter(last.cards, opponent, allow_power)
 		if counter.is_empty() and not allow_power:
-			counter = _find_smallest_counter(last.cards, true)
+			counter = _find_best_counter(last.cards, opponent, true)
 		if counter.is_empty():
 			return {"action": "pass", "cards": []}
 		return {"action": "play", "cards": counter}
-	var long_play := _find_best_long_play(true)
-	if not long_play.is_empty():
-		return {"action": "play", "cards": long_play}
+	var scored_play := _find_best_scored_opening_play(opponent, true)
+	if not scored_play.is_empty():
+		return {"action": "play", "cards": scored_play}
 	return _choose_easy(battle_state)
 
 func should_use_ultimate(battle_state) -> bool:
-	if difficulty == "easy" or energy_points <= 0:
+	if difficulty == "easy" or not SkillSystem.can_use_character_skill(self):
 		return false
 	var opponent: Combatant = battle_state.player if battle_state.enemy == self else battle_state.enemy
 	if difficulty == "hard":
@@ -127,6 +128,143 @@ func _find_best_long_play(include_power_cards: bool) -> Array[Card]:
 		return _opening_score(a) > _opening_score(b)
 	)
 	return _to_card_array(candidates[0])
+
+func _find_best_scored_opening_play(opponent: Combatant, include_power_cards: bool) -> Array[Card]:
+	var candidates := _enumerate_opening_candidates(hand.get_cards(), include_power_cards)
+	if candidates.is_empty():
+		return []
+	candidates.sort_custom(func(a: Array, b: Array) -> bool:
+		return _score_opening_candidate(_to_card_array(a), opponent, include_power_cards) > _score_opening_candidate(_to_card_array(b), opponent, include_power_cards)
+	)
+	return _to_card_array(candidates[0])
+
+func _find_best_counter(target: Array[Card], opponent: Combatant, allow_power_cards: bool = true) -> Array[Card]:
+	var target_type := DoudizhuRules.identify_hand(target)
+	var cards := hand.get_cards()
+	var candidates := _enumerate_same_type(cards, target_type, target.size())
+	if allow_power_cards:
+		for b in _enumerate_bombs(cards):
+			candidates.append(b)
+		var rb := _find_royal_bomb(cards)
+		if not rb.is_empty():
+			candidates.append(rb)
+	var valid := []
+	for combo in candidates:
+		var combo_cards := _to_card_array(combo)
+		if DoudizhuRules.can_beat(combo_cards, target):
+			valid.append(combo)
+	if valid.is_empty():
+		return []
+	valid.sort_custom(func(a: Array, b: Array) -> bool:
+		return _score_counter_candidate(_to_card_array(a), target, opponent, allow_power_cards) > _score_counter_candidate(_to_card_array(b), target, opponent, allow_power_cards)
+	)
+	return _to_card_array(valid[0])
+
+func _score_opening_candidate(cards: Array[Card], opponent: Combatant, include_power_cards: bool) -> int:
+	var type := DoudizhuRules.identify_hand(cards)
+	var score := 0
+	score += cards.size() * 120
+	score += CardToAction.compute_damage(type, cards.size()) * 2
+	score += _type_priority_score(type)
+	if cards.size() == hand.size():
+		score += 2000
+	if opponent != null and opponent.hand.size() <= 3:
+		score += CardToAction.compute_damage(type, cards.size()) * 4
+	score -= _structure_break_penalty(cards)
+	score -= _high_card_waste_penalty(cards, type)
+	if type in [DoudizhuRules.HandType.BOMB, DoudizhuRules.HandType.ROYAL_BOMB]:
+		score -= 500
+		if include_power_cards and opponent != null and opponent.hand.size() <= 3:
+			score += 900
+	return score
+
+func _score_counter_candidate(cards: Array[Card], target: Array[Card], opponent: Combatant, allow_power_cards: bool) -> int:
+	var type := DoudizhuRules.identify_hand(cards)
+	var target_type := DoudizhuRules.identify_hand(target)
+	var score := 0
+	score += 1000
+	score += cards.size() * 80
+	score += CardToAction.compute_damage(type, cards.size())
+	if cards.size() == hand.size():
+		score += 2000
+	if opponent != null and opponent.hand.size() <= 3:
+		score += 700
+	score -= DoudizhuRules._anchor(cards, type) * 8
+	score -= _structure_break_penalty(cards)
+	if type != target_type:
+		score -= 700
+		if allow_power_cards and opponent != null and opponent.hand.size() <= 3:
+			score += 1000
+	return score
+
+func _type_priority_score(type: int) -> int:
+	match type:
+		DoudizhuRules.HandType.AIRPLANE_PAIR: return 240
+		DoudizhuRules.HandType.AIRPLANE_SINGLE: return 220
+		DoudizhuRules.HandType.STRAIGHT_FLUSH: return 600
+		DoudizhuRules.HandType.STRAIGHT: return 180
+		DoudizhuRules.HandType.CONSECUTIVE_PAIRS: return 170
+		DoudizhuRules.HandType.FOUR_TWO: return 150
+		DoudizhuRules.HandType.TRIPLE_PAIR: return 130
+		DoudizhuRules.HandType.TRIPLE_ONE: return 110
+		DoudizhuRules.HandType.BOMB: return 100
+		DoudizhuRules.HandType.ROYAL_BOMB: return 100
+		DoudizhuRules.HandType.TRIPLE: return 80
+		DoudizhuRules.HandType.PAIR: return 40
+	return 0
+
+func _structure_break_penalty(cards: Array[Card]) -> int:
+	if _is_complete_protected_structure(cards):
+		return 0
+	var protected_cards := _structure_protected_cards(hand.get_cards())
+	var penalty := 0
+	for c in cards:
+		if protected_cards.has(c):
+			penalty += protected_cards[c]
+	return penalty
+
+func _is_complete_protected_structure(cards: Array[Card]) -> bool:
+	var type := DoudizhuRules.identify_hand(cards)
+	return type in [
+		DoudizhuRules.HandType.AIRPLANE_PAIR,
+		DoudizhuRules.HandType.AIRPLANE_SINGLE,
+		DoudizhuRules.HandType.STRAIGHT_FLUSH,
+		DoudizhuRules.HandType.STRAIGHT,
+		DoudizhuRules.HandType.CONSECUTIVE_PAIRS,
+		DoudizhuRules.HandType.BOMB,
+		DoudizhuRules.HandType.ROYAL_BOMB,
+	]
+
+func _high_card_waste_penalty(cards: Array[Card], type: int) -> int:
+	if type != DoudizhuRules.HandType.SINGLE and type != DoudizhuRules.HandType.PAIR:
+		return 0
+	var penalty := 0
+	for c in cards:
+		if c.number >= 14:
+			penalty += 90
+		elif c.number >= 12:
+			penalty += 35
+	return penalty
+
+func _structure_protected_cards(cards: Array[Card]) -> Dictionary:
+	var protected := {}
+	for combo in _enumerate_airplane_pair(cards):
+		_add_protected(protected, combo, 260)
+	for combo in _enumerate_airplane_single(cards):
+		_add_protected(protected, combo, 240)
+	for combo in _enumerate_straight_flushes(cards):
+		_add_protected(protected, combo, 230)
+	for combo in _enumerate_straights(cards):
+		_add_protected(protected, combo, 180)
+	for combo in _enumerate_consecutive_pairs(cards):
+		_add_protected(protected, combo, 170)
+	for combo in _enumerate_bombs(cards):
+		_add_protected(protected, combo, 260)
+	return protected
+
+func _add_protected(protected: Dictionary, combo: Array, value: int) -> void:
+	for c in combo:
+		protected[c] = max(protected.get(c, 0), value)
 
 func _opening_score(combo: Array) -> int:
 	var cards := _to_card_array(combo)
@@ -241,6 +379,8 @@ func _enumerate_same_type(cards: Array[Card], target_type: int, target_size: int
 			return _enumerate_triple_pair(cards)
 		DoudizhuRules.HandType.STRAIGHT:
 			return _enumerate_straights(cards, target_size)
+		DoudizhuRules.HandType.STRAIGHT_FLUSH:
+			return _enumerate_straight_flushes(cards, target_size)
 		DoudizhuRules.HandType.CONSECUTIVE_PAIRS:
 			return _enumerate_consecutive_pairs(cards, target_size / 2)
 		DoudizhuRules.HandType.AIRPLANE_SINGLE:
@@ -259,6 +399,8 @@ func _enumerate_opening_long_plays(cards: Array[Card], include_power_cards: bool
 		result.append(combo)
 	for combo in _enumerate_airplane_single(cards):
 		result.append(combo)
+	for combo in _enumerate_straight_flushes(cards):
+		result.append(combo)
 	for combo in _enumerate_straights(cards):
 		result.append(combo)
 	for combo in _enumerate_consecutive_pairs(cards):
@@ -275,6 +417,36 @@ func _enumerate_opening_long_plays(cards: Array[Card], include_power_cards: bool
 		var rb := _find_royal_bomb(cards)
 		if not rb.is_empty():
 			result.append(rb)
+	return result
+
+func _enumerate_opening_candidates(cards: Array[Card], include_power_cards: bool) -> Array:
+	var result := _enumerate_opening_long_plays(cards, include_power_cards)
+	for combo in _find_triples(cards):
+		result.append(combo)
+	for combo in _find_pairs(cards):
+		result.append(combo)
+	var sorted := cards.duplicate()
+	sorted.sort_custom(func(a: Card, b: Card) -> bool: return a.number < b.number)
+	for c in sorted:
+		result.append([c])
+	return _unique_valid_candidates(result)
+
+func _unique_valid_candidates(candidates: Array) -> Array:
+	var seen := {}
+	var result := []
+	for combo in candidates:
+		var combo_cards := _to_card_array(combo)
+		if DoudizhuRules.identify_hand(combo_cards) == DoudizhuRules.HandType.INVALID:
+			continue
+		var keys := []
+		for c in combo_cards:
+			keys.append("%s-%d-%s" % [c.suit, c.number, str(c.attributes)])
+		keys.sort()
+		var key := "|".join(keys)
+		if seen.has(key):
+			continue
+		seen[key] = true
+		result.append(combo)
 	return result
 
 func _enumerate_triple_one(cards: Array[Card]) -> Array:
@@ -309,6 +481,18 @@ func _enumerate_straights(cards: Array[Card], exact_size: int = 0) -> Array:
 	var min_len := exact_size if exact_size > 0 else 5
 	var max_len := exact_size if exact_size > 0 else nums.size()
 	return _enumerate_runs(groups, nums, min_len, max_len, 1)
+
+func _enumerate_straight_flushes(cards: Array[Card], exact_size: int = 0) -> Array:
+	var by_suit := {}
+	for c in cards:
+		if c.suit == "joker" or c.is_wild():
+			continue
+		by_suit[c.suit] = by_suit.get(c.suit, []) + [c]
+	var result := []
+	for suit in by_suit:
+		for combo in _enumerate_straights(_to_card_array(by_suit[suit]), exact_size):
+			result.append(combo)
+	return result
 
 func _enumerate_consecutive_pairs(cards: Array[Card], exact_pair_count: int = 0) -> Array:
 	var groups := _number_groups(cards)

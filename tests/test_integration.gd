@@ -32,9 +32,11 @@ func test_ai_vs_ai_battle_completes() -> void:
 	var loser: Combatant = ai2 if winner == ai1 else ai1
 	assert_true(loser.hp <= 0)
 
-func test_ai_vs_ai_energy_accumulates() -> void:
+func test_ai_vs_ai_resources_accumulate() -> void:
 	var ai1 := AICombatant.new()
 	var ai2 := AICombatant.new()
+	ai1.resource_bar.set_max_values(5, 5, false)
+	ai2.resource_bar.set_max_values(5, 5, false)
 	var bs := BattleState.new(7)
 	bs.start_battle(ai1, ai2)
 
@@ -50,13 +52,15 @@ func test_ai_vs_ai_energy_accumulates() -> void:
 				bs.process_pass(attacker)
 		turns += 1
 
-	var any_energy := (ai1.energy_bar.real_points + ai1.energy_bar.energy_points
-		+ ai2.energy_bar.real_points + ai2.energy_bar.energy_points)
-	assert_gt(any_energy, 0, "Some energy should be accumulated during a full battle")
+	var any_resource: int = (ai1.resource_bar.combo_points + ai1.resource_bar.mana
+		+ ai2.resource_bar.combo_points + ai2.resource_bar.mana)
+	assert_gt(any_resource, 0, "Some resources should be accumulated during a full battle")
 
 func test_empty_hand_settlement_keeps_winner_combo_and_resets_loser() -> void:
 	var ai1 := AICombatant.new()
 	var ai2 := AICombatant.new()
+	ai1.resource_bar.set_max_values(5, 5, false)
+	ai2.resource_bar.set_max_values(5, 5, false)
 	var bs := BattleState.new(13)
 	bs.start_battle(ai1, ai2)
 
@@ -67,6 +71,5 @@ func test_empty_hand_settlement_keeps_winner_combo_and_resets_loser() -> void:
 	bs.last_play = PlayedHand.new()
 	bs.process_play(ai1, [c3])
 	assert_true(ai1.combo_state.active, "Winner combo should continue after emptying hand")
-	assert_eq(ai1.energy_bar.virtual_points, 0, "Winner virtual points should convert to real")
-	assert_gt(ai1.energy_bar.real_points + ai1.energy_bar.energy_points, 0)
+	assert_eq(ai1.resource_bar.combo_points, 0, "First play only seeds combo points")
 	assert_false(ai2.combo_state.active, "Loser combo should reset")

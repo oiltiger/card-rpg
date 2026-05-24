@@ -40,6 +40,35 @@ func test_straight_with_2_invalid() -> void:
 	var cards: Array[Card] = [_mk("spades", 11), _mk("hearts", 12), _mk("clubs", 13), _mk("diamonds", 14), _mk("hearts", 15)]
 	assert_eq(DoudizhuRules.identify_hand(cards), HT.INVALID)
 
+func test_straight_flush() -> void:
+	var cards: Array[Card] = [_mk("spades", 3), _mk("spades", 4), _mk("spades", 5), _mk("spades", 6), _mk("spades", 7)]
+	assert_eq(DoudizhuRules.identify_hand(cards), HT.STRAIGHT_FLUSH)
+
+func test_straight_flush_beats_bomb() -> void:
+	var atk: Array[Card] = [_mk("spades", 3), _mk("spades", 4), _mk("spades", 5), _mk("spades", 6), _mk("spades", 7)]
+	var def: Array[Card] = [_mk("hearts", 9), _mk("clubs", 9), _mk("diamonds", 9), _mk("spades", 9)]
+	assert_true(DoudizhuRules.can_beat(atk, def))
+
+func test_bomb_does_not_beat_straight_flush() -> void:
+	var atk: Array[Card] = [_mk("hearts", 9), _mk("clubs", 9), _mk("diamonds", 9), _mk("spades", 9)]
+	var def: Array[Card] = [_mk("spades", 3), _mk("spades", 4), _mk("spades", 5), _mk("spades", 6), _mk("spades", 7)]
+	assert_false(DoudizhuRules.can_beat(atk, def))
+
+func test_straight_flush_compare_like_straight() -> void:
+	var atk: Array[Card] = [_mk("spades", 4), _mk("spades", 5), _mk("spades", 6), _mk("spades", 7), _mk("spades", 8)]
+	var def: Array[Card] = [_mk("hearts", 3), _mk("hearts", 4), _mk("hearts", 5), _mk("hearts", 6), _mk("hearts", 7)]
+	assert_true(DoudizhuRules.can_beat(atk, def))
+
+func test_straight_flush_must_match_length_to_beat() -> void:
+	var atk: Array[Card] = [_mk("spades", 4), _mk("spades", 5), _mk("spades", 6), _mk("spades", 7), _mk("spades", 8), _mk("spades", 9)]
+	var def: Array[Card] = [_mk("hearts", 3), _mk("hearts", 4), _mk("hearts", 5), _mk("hearts", 6), _mk("hearts", 7)]
+	assert_false(DoudizhuRules.can_beat(atk, def))
+
+func test_royal_bomb_beats_straight_flush() -> void:
+	var atk: Array[Card] = [_mk("joker", 16), _mk("joker", 17)]
+	var def: Array[Card] = [_mk("spades", 3), _mk("spades", 4), _mk("spades", 5), _mk("spades", 6), _mk("spades", 7)]
+	assert_true(DoudizhuRules.can_beat(atk, def))
+
 func test_consecutive_pairs() -> void:
 	var cards: Array[Card] = [
 		_mk("spades", 3), _mk("hearts", 3),

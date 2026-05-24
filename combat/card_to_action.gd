@@ -17,6 +17,7 @@ static func action_name(hand_type: int) -> String:
 		HT.AIRPLANE_PAIR: return "飞机带对"
 		HT.FOUR_TWO: return "四带二"
 		HT.BOMB: return "炸弹"
+		HT.STRAIGHT_FLUSH: return "同花顺"
 		HT.ROYAL_BOMB: return "王炸"
 	return "无效"
 

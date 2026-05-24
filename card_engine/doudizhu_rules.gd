@@ -15,6 +15,7 @@ enum HandType {
 	AIRPLANE_PAIR,
 	FOUR_TWO,
 	BOMB,
+	STRAIGHT_FLUSH,
 	ROYAL_BOMB,
 }
 
@@ -79,7 +80,8 @@ static func _try_wild_values(non_wilds: Array[Card], remaining: int, values: Arr
 
 static func _hand_type_priority(type: int) -> int:
 	match type:
-		HandType.ROYAL_BOMB: return 9
+		HandType.ROYAL_BOMB: return 10
+		HandType.STRAIGHT_FLUSH: return 9
 		HandType.BOMB: return 8
 		HandType.AIRPLANE_PAIR: return 7
 		HandType.AIRPLANE_SINGLE: return 7
@@ -144,11 +146,15 @@ static func _identify_without_wild(cards: Array[Card]) -> int:
 				has_p = true
 		if has_t and has_p and numbers.size() == 2:
 			return HandType.TRIPLE_PAIR
+		if _is_straight_flush(cards):
+			return HandType.STRAIGHT_FLUSH
 		if _is_straight(cards):
 			return HandType.STRAIGHT
 		return HandType.INVALID
 
 	# n >= 6
+	if n >= 5 and _is_straight_flush(cards):
+		return HandType.STRAIGHT_FLUSH
 	if n >= 5 and _is_straight(cards):
 		return HandType.STRAIGHT
 	if n >= 6 and n % 2 == 0 and _is_consecutive_pairs(cards):
@@ -194,6 +200,15 @@ static func _is_consecutive_pairs(cards: Array[Card]) -> bool:
 			return false
 	for i in range(1, nums.size()):
 		if nums[i] != nums[i - 1] + 1:
+			return false
+	return true
+
+static func _is_straight_flush(cards: Array[Card]) -> bool:
+	if not _is_straight(cards):
+		return false
+	var suit := cards[0].suit
+	for c in cards:
+		if c.suit != suit:
 			return false
 	return true
 
@@ -262,6 +277,17 @@ static func can_beat(attacker: Array[Card], defender: Array[Card]) -> bool:
 	# Royal bomb beats everything
 	if atk_type == HandType.ROYAL_BOMB:
 		return def_type != HandType.ROYAL_BOMB
+	# Straight flush beats everything except royal bomb and higher straight flush.
+	if atk_type == HandType.STRAIGHT_FLUSH:
+		if def_type == HandType.ROYAL_BOMB:
+			return false
+		if def_type == HandType.STRAIGHT_FLUSH:
+			if attacker.size() != defender.size():
+				return false
+			return _anchor(attacker, atk_type) > _anchor(defender, def_type)
+		return true
+	if def_type == HandType.STRAIGHT_FLUSH:
+		return false
 	# Bomb beats non-bomb / non-royal
 	if atk_type == HandType.BOMB:
 		if def_type == HandType.ROYAL_BOMB:
@@ -275,7 +301,7 @@ static func can_beat(attacker: Array[Card], defender: Array[Card]) -> bool:
 	if atk_type != def_type:
 		return false
 	# Same type — for STRAIGHT/CONSECUTIVE_PAIRS, must be same length
-	if atk_type in [HandType.STRAIGHT, HandType.CONSECUTIVE_PAIRS, HandType.AIRPLANE_SINGLE, HandType.AIRPLANE_PAIR]:
+	if atk_type in [HandType.STRAIGHT, HandType.STRAIGHT_FLUSH, HandType.CONSECUTIVE_PAIRS, HandType.AIRPLANE_SINGLE, HandType.AIRPLANE_PAIR]:
 		if attacker.size() != defender.size():
 			return false
 	return _anchor(attacker, atk_type) > _anchor(defender, def_type)
@@ -314,7 +340,7 @@ static func _anchor(cards: Array[Card], type: int) -> int:
 			if not triple_nums.is_empty():
 				return triple_nums[0]
 			return 0
-		HandType.STRAIGHT, HandType.CONSECUTIVE_PAIRS:
+		HandType.STRAIGHT, HandType.STRAIGHT_FLUSH, HandType.CONSECUTIVE_PAIRS:
 			var nums: Array[int] = []
 			for c in non_wilds:
 				nums.append(c.number)

@@ -50,7 +50,7 @@ offset_bottom = 100.0
 alignment = 1
 
 [node name="PlayerEnergyLabel" type="Label" parent="EnergyRow"]
-text = "蓄气: 0/10 积: 无"
+text = "连击: 0/0 蓝: 0/0"
 size_flags_horizontal = 3
 
 [node name="EnergyMiddle" type="Control" parent="EnergyRow"]
@@ -58,7 +58,7 @@ custom_minimum_size = Vector2(200, 0)
 size_flags_horizontal = 3
 
 [node name="EnemyEnergyLabel" type="Label" parent="EnergyRow"]
-text = "蓄气: 0/10 积: 无"
+text = "连击: 0/0 蓝: 0/0"
 size_flags_horizontal = 3
 horizontal_alignment = 2
 

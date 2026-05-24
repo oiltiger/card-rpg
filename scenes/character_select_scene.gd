@@ -15,7 +15,7 @@ func _render_characters() -> void:
 		panel.custom_minimum_size = Vector2(330, 280)
 		panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var title := Label.new()
-		title.text = "%s  HP %d" % [data.display_name, data.max_hp]
+		title.text = "%s  HP %d  连击 %d  蓝 %d" % [data.display_name, data.max_hp, data.max_combo_points, data.max_mana]
 		title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		panel.add_child(title)
 		var desc := Label.new()

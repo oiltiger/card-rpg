@@ -14,7 +14,7 @@ enum TurnPhase {
 var player: Combatant = null
 var enemy: Combatant = null
 var current_attacker: Combatant = null
-var last_play: PlayedHand = null  # last non-pass play (the one to beat)
+var last_play: PlayedHand = null
 var round_number: int = 0
 var turn_phase: int = TurnPhase.WAITING_PLAY
 var rng: RandomNumberGenerator = null
@@ -42,10 +42,8 @@ func start_battle(p1: Combatant, p2: Combatant) -> void:
 func _deal_initial() -> void:
 	var d := Deck.new()
 	d.shuffle_deck(rng)
-	var p1_cards := d.deal(17)
-	var p2_cards := d.deal(17)
-	player.hand = Hand.new(p1_cards)
-	enemy.hand = Hand.new(p2_cards)
+	player.hand = Hand.new(d.deal(17))
+	enemy.hand = Hand.new(d.deal(17))
 	discard_pile = d.deal(d.size())
 
 func redeal_if_needed() -> bool:
@@ -59,14 +57,12 @@ func redeal_if_needed() -> bool:
 func _other(c: Combatant) -> Combatant:
 	return enemy if c == player else player
 
-# Process a play (cards). Returns result dict.
-# Result: { valid, damage, combo_continued, virtual_added, hand_type }
 func process_play(combatant: Combatant, cards: Array[Card]) -> Dictionary:
 	var result := {
 		"valid": false,
 		"damage": 0,
 		"combo_continued": false,
-		"virtual_added": 0,
+		"combo_added": 0,
 		"hand_type": DoudizhuRules.HandType.INVALID,
 		"penalty_damage": 0,
 		"reflected_damage": 0,
@@ -76,13 +72,8 @@ func process_play(combatant: Combatant, cards: Array[Card]) -> Dictionary:
 	var hand_type := DoudizhuRules.identify_hand(cards)
 	if hand_type == DoudizhuRules.HandType.INVALID:
 		return result
-
-	# Must beat last_play (unless last_play empty = opening)
-	if not last_play.is_empty():
-		if not DoudizhuRules.can_beat(cards, last_play.cards):
-			return result
-
-	# Remove cards from hand
+	if not last_play.is_empty() and not DoudizhuRules.can_beat(cards, last_play.cards):
+		return result
 	if not combatant.hand.remove_cards(cards):
 		return result
 
@@ -91,7 +82,6 @@ func process_play(combatant: Combatant, cards: Array[Card]) -> Dictionary:
 	var damage: int = CardToAction.compute_damage(hand_type, cards.size()) + SkillSystemRef.bonus_damage(combatant, hand_type, cards)
 	result.damage = damage
 
-	# Combo check
 	var has_wild := false
 	for c in cards:
 		if c.is_wild():
@@ -99,50 +89,37 @@ func process_play(combatant: Combatant, cards: Array[Card]) -> Dictionary:
 			break
 	var combo_ok := combatant.combo_state.check_combo(hand_type, cards.size(), has_wild)
 	result.combo_continued = combo_ok
-	if combo_ok:
-		var virtual_gain: int = cards.size() + SkillSystemRef.bonus_virtual(combatant, cards)
-		combatant.energy_bar.add_virtual(virtual_gain)
-		result.virtual_added = virtual_gain
-	else:
-		# Combo broken — convert, reset, start fresh
-		combatant.energy_bar.convert_virtual_to_real()
+	if not combo_ok:
+		combatant.resource_bar.clear_combo()
 		combatant.combo_state.reset()
 		combatant.combo_state.check_combo(hand_type, cards.size(), has_wild)
-		var virtual_gain: int = cards.size() + SkillSystemRef.bonus_virtual(combatant, cards)
-		combatant.energy_bar.add_virtual(virtual_gain)
-		result.virtual_added = virtual_gain
-		combatant.energy_points = combatant.energy_bar.energy_points
-	SkillSystemRef.after_valid_play(combatant)
+	else:
+		var combo_gain: int = cards.size() + SkillSystemRef.bonus_combo(combatant, cards)
+		combatant.resource_bar.gain_combo(combo_gain)
+		result.combo_added = combo_gain
+	SkillSystemRef.after_valid_play(combatant, combo_ok)
 
-	# Record this play as the new last_play
 	last_play = PlayedHand.new(hand_type, cards, damage, combatant)
-
-	# Swap attacker — defender must respond
 	current_attacker = _other(combatant)
 	turn_phase = TurnPhase.WAITING_RESPONSE
 
 	if combatant.hand.is_empty():
 		var other := _other(combatant)
 		if not other.hand.is_empty():
-			# Opponent still has cards — apply penalty damage
 			var penalty := other.hand.size() * 10
-			combatant.energy_bar.convert_virtual_to_real()
-			combatant.energy_points = combatant.energy_bar.energy_points
 			var damage_outcome := _apply_damage_or_reflect(other, combatant, penalty)
-			result["penalty_damage"] = penalty
-			result["reflected_damage"] = damage_outcome.reflected_damage
-			# Combo: finisher keeps state, opponent resets
-			other.combo_state.reset()
+			result.penalty_damage = penalty
+			result.reflected_damage = damage_outcome.reflected_damage
 			if damage_outcome.reflected_damage > 0:
-				combatant.energy_bar.on_round_loss(penalty)
-				other.energy_bar.on_round_win()
+				combatant.combo_state.reset()
+				combatant.resource_bar.on_round_loss(penalty)
+				other.resource_bar.on_round_win()
 			else:
-				other.energy_bar.on_round_loss(penalty)
-			other.energy_points = other.energy_bar.energy_points
-			combatant.energy_points = combatant.energy_bar.energy_points
+				other.combo_state.reset()
+				other.resource_bar.on_round_loss(penalty)
 			if damage_outcome.dead or damage_outcome.reflected_dead:
 				turn_phase = TurnPhase.BATTLE_OVER
-				result["battle_over"] = true
+				result.battle_over = true
 			else:
 				_deal_initial()
 				round_number += 1
@@ -153,7 +130,6 @@ func process_play(combatant: Combatant, cards: Array[Card]) -> Dictionary:
 			redeal_if_needed()
 	return result
 
-# Process a pass. Returns { damage_taken, hp_remaining, battle_over, round_ended }
 func process_pass(combatant: Combatant) -> Dictionary:
 	var result := {
 		"damage_taken": 0,
@@ -163,7 +139,6 @@ func process_pass(combatant: Combatant) -> Dictionary:
 		"round_ended": false,
 	}
 
-	# If no last_play (opening), passing is illegal — return as no-op
 	if last_play.is_empty():
 		return result
 
@@ -175,20 +150,15 @@ func process_pass(combatant: Combatant) -> Dictionary:
 	result.hp_remaining = combatant.hp
 	result.round_ended = true
 
-	# Energy settlement
 	if damage_outcome.reflected_damage > 0:
-		combatant.energy_bar.on_round_win()
-		attacker.energy_bar.on_round_loss(dmg)
+		combatant.resource_bar.on_round_win()
+		attacker.combo_state.reset()
+		attacker.resource_bar.on_round_loss(dmg)
 	else:
-		attacker.energy_bar.on_round_win()
-		combatant.energy_bar.on_round_loss(dmg)
-	attacker.energy_points = attacker.energy_bar.energy_points
-	combatant.energy_points = combatant.energy_bar.energy_points
-	# Reset combo states for both
-	attacker.combo_state.reset()
-	combatant.combo_state.reset()
+		attacker.resource_bar.on_round_win()
+		combatant.combo_state.reset()
+		combatant.resource_bar.on_round_loss(dmg)
 
-	# Round end housekeeping
 	round_number += 1
 	last_play = PlayedHand.new()
 	current_attacker = combatant if damage_outcome.reflected_damage > 0 else attacker
@@ -198,7 +168,6 @@ func process_pass(combatant: Combatant) -> Dictionary:
 		turn_phase = TurnPhase.BATTLE_OVER
 		result.battle_over = true
 
-	# If redeal didn't happen but winner has no cards, give turn to opponent who has cards.
 	if not redeal_if_needed() and current_attacker.hand.is_empty():
 		current_attacker = _other(current_attacker)
 

@@ -12,5 +12,5 @@ func test_character_catalog_has_three_characters() -> void:
 	var characters := CharacterData.all_player_characters()
 	assert_eq(characters.size(), 3)
 	assert_eq(characters[0].id, "warrior")
-	assert_eq(characters[1].id, "trickster")
+	assert_eq(characters[1].id, "mage")
 	assert_eq(characters[2].id, "monk")
